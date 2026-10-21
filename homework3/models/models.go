@@ -17,6 +17,7 @@ type Post struct {
 	Title string `gorm:"size:128;not null"`
 	Content string `gorm:"type:text"`
 	UserID uint `gorm:"index"`  // 外键，加index提升性能
+	CommentStatus string `gorm:"size:32;default:'有评论'"`  // 新增字段：评论状态
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Comments []Comment // // 一对多：自动寻找Comment里的PostID
@@ -27,6 +28,7 @@ type User struct {
 	ID uint `gorm:"primaryKey"`
 	Name string `gorm:"size:64;not null"`
 	Email string `gorm:"size:128;uniqueIndex;not null"`
+	PostCount int `gorm:"default:0"`  // 新增字段：文章数量统计
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Posts []Post  // 一对多：自动寻找 Post 里的 UserID

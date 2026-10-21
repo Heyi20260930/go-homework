@@ -28,7 +28,7 @@ func main() {
 
 	// 3. 插入测试数据 (加在这里)
 	// 利用 GORM 的关联创建，直接造一个嵌套结构体
-	/* user := models.User{
+	user := models.User{
 		Name:  "张三",
 		Email: "zhangsan@test.com",
 		Posts: []models.Post{
@@ -44,10 +44,14 @@ func main() {
 	}
 
 	// 只要执行这一句，GORM 会把 User、Post、Comment 全部按顺序插入，并自动填好外键
-	if err := db.Create(&user).Error; err != nil {
-		log.Fatalf("插入测试数据失败： %v", err)
-	}
-	fmt.Println("测试数据插入成功！") */
+	//if err := db.Create(&user).Error; err != nil {
+	//	log.Fatalf("插入测试数据失败： %v", err)
+	//}
+	// 先按邮箱查找张三，如果找不到，才执行创建
+	if err := db.Where(models.User{Email: "zhangsan@test.com"}).FirstOrCreate(&user).Error; err != nil {
+    log.Fatalf("插入测试数据失败： %v", err)
+}
+	fmt.Println("测试数据插入成功！")
 
 	// 查询 ID 为 1 的文章，并把它的评论一起查出来（预加载）
 	/* var post models.Post
@@ -59,7 +63,7 @@ func main() {
 	}	 */
 
 	// 从 User 开始查
-	var user models.User
+	//var user models.User
 	// 从 User 开始查，预加载 Posts，再预加载 Posts 里的 Comments
 	db.Preload("Posts.Comments").First(&user, 1)
 	// 打印结果
@@ -95,5 +99,46 @@ func main() {
 	}
 	
 	fmt.Printf("评论最多的文章：%s (ID: %d)，评论数：%d\n", topPost.Title,topPost.ID, topPost.CommentCount)
+	
+	// 1. 测试 Post 钩子
+	// var user models.User
+	db.First(&user, 1) // 假设刚才插入了张三（ID=1）
+	fmt.Printf("添加文章前，张三的文章数: %d\n", user.PostCount)
+	
+	
+	// 测试钩子：创建一个全新的用户（李四），插入新文章
+	lisi := models.User{
+		Name:  "李四",
+		Email: "lisi@test.com", // 全新的邮箱
+		Posts: []models.Post{
+			{Title: "李四的文章"},
+		},
+	}
+	db.Create(&lisi) // 这会百分百触发 AfterCreate 钩子
+
+	// 重新查李四
+	var checkUser models.User
+	db.Where("email = ?", "lisi@test.com").First(&checkUser)
+	fmt.Printf("李四的文章数统计: %d\n", checkUser.PostCount) 
+	
+	
+	
+	// 测试 Comment 的 AfterDelete 钩子
+	fmt.Printf("测试 Comment 的 AfterDelete 钩子------------------------------------------------------------\n") 
+	// 刚才给李四插入了一篇文章，但没插评论。我们先给他插一条评论
+	newComment := models.Comment{Content: "李四的沙发", PostID:2}
+	db.Create(&newComment)
+
+	// 此时文章状态应该是默认的 "有评论"
+	var lisiPost models.Post
+	db.First(&lisiPost, 2)
+	fmt.Printf("删除评论前，文章状态: %s\n", lisiPost.CommentStatus)
+
+	// 执行删除评论动作，这会触发你的 AfterDelete 钩子
+	db.Delete(&newComment)
+
+	// 重新加载文章，看看状态有没有变成 "无评论"
+	db.First(&lisiPost,2)
+	fmt.Printf("删除评论后，文章状态: %s\n", lisiPost.CommentStatus)
 
 }
