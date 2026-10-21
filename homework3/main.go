@@ -72,4 +72,28 @@ func main() {
 		}
 	}
 
+	// 编写Go代码，使用Gorm查询评论数量最多的文章信息
+	// 定义一个结构体来接收统计结果
+	type PostStat struct {
+		ID uint
+		Title string
+		CommentCount int64
+	}
+	
+	var topPost PostStat
+	
+	errCount := db.Model(&models.Post{}).
+		Select("posts.id, posts.title, COUNT(comments.id) AS comment_count").
+		Joins("LEFT JOIN comments ON comments.post_id = posts.id").
+		Group("posts.id").
+		Order("comment_count DESC").
+		Limit(1).
+		Scan(&topPost).Error
+		
+	if errCount != nil {
+		log.Fatalf("统计失败: %v", errCount)
+	}
+	
+	fmt.Printf("评论最多的文章：%s (ID: %d)，评论数：%d\n", topPost.Title,topPost.ID, topPost.CommentCount)
+
 }
