@@ -106,39 +106,58 @@ func main() {
 	fmt.Printf("添加文章前，张三的文章数: %d\n", user.PostCount)
 	
 	
-	// 测试钩子：创建一个全新的用户（李四），插入新文章
-	lisi := models.User{
-		Name:  "李四",
-		Email: "lisi@test.com", // 全新的邮箱
-		Posts: []models.Post{
-			{Title: "李四的文章"},
-		},
+	// ================= 测试 Post 钩子与 AfterDelete 修复 =================
+	fmt.Println("测试 Post 钩子与 AfterDelete---------------------------------")
+	// 1.查找李四。如果没查到，才创建
+	var lisi models.User
+	errLisi := db.Where("email = ?", "lisi@test.com").First(&lisi).Error
+	if errLisi != nil {
+		// 如果报错说找不到，说明李四不在，这里才创建
+		lisi = models.User{Name: "李四", Email: "lisi@test.com"}
+		db.Create(&lisi) 
 	}
-	db.Create(&lisi) // 这会百分百触发 AfterCreate 钩子
-
-	// 重新查李四
+	// 删光李四名下所有的旧文章（防止脏数据干扰）
+	db.Where("user_id = ?", lisi.ID).Delete(&models.Post{})
+	// 2. 强制把李四的统计数重置为 0
+	db.Model(&lisi).Update("post_count", 0)
+	
+	// 2.不管怎样，每次测试前，强制给李四重建一篇文章
+	lisiPost := models.Post{Title:"李四的测试文章", UserID: lisi.ID}
+	db.Create(&lisiPost)
+	// 3. 重新查一下李四现在的文章数（应该是1）
 	var checkUser models.User
-	db.Where("email = ?", "lisi@test.com").First(&checkUser)
-	fmt.Printf("李四的文章数统计: %d\n", checkUser.PostCount) 
+	db.First(&checkUser, lisi.ID)
+	fmt.Printf("删除文章前，李四的文章数: %d\n", checkUser.PostCount)
+	// 4. 删除刚刚建的文章（触发AfterDelete，post_count -1）
+	db.Delete(&lisiPost)
+	db.First(&checkUser, lisi.ID)
+	fmt.Printf("删除文章后，李四的文章数: %d\n", checkUser.PostCount)
 	
 	
+	// ================= 测试 Comment 的 AfterDelete 钩子 =================
+	fmt.Println("测试评论的AfterDelete钩子---------------------------------")
 	
-	// 测试 Comment 的 AfterDelete 钩子
-	fmt.Printf("测试 Comment 的 AfterDelete 钩子------------------------------------------------------------\n") 
-	// 刚才给李四插入了一篇文章，但没插评论。我们先给他插一条评论
-	newComment := models.Comment{Content: "李四的沙发", PostID:2}
+	// 1.新建一篇专门用来测试评论的干净文章
+	testPost := models.Post{Title: "测试评论的文章", UserID: lisi.ID}
+	db.Create(&testPost) 
+
+	// 【为了严谨测试，手动改成 "无评论"】
+	db.Model(&testPost).Update("comment_status", "无评论")
+
+	// 2. 给这篇文章插入一条评论（让他触发 Comment.AfterCreate 钩子）
+	newComment := models.Comment{Content: "李四的沙发", PostID: testPost.ID}
 	db.Create(&newComment)
 
-	// 此时文章状态应该是默认的 "有评论"
-	var lisiPost models.Post
-	db.First(&lisiPost, 2)
-	fmt.Printf("删除评论前，文章状态: %s\n", lisiPost.CommentStatus)
+	// 3. 查询文章状态（看看钩子有没有把 "无评论" 自动变回 "有评论"）
+	var postForComment models.Post
+	db.First(&postForComment, testPost.ID)
+	fmt.Printf("添加评论后，文章状态: %s\n", postForComment.CommentStatus)
 
-	// 执行删除评论动作，这会触发你的 AfterDelete 钩子
+	// 4. 执行删除评论动作（让它触发 Comment.AfterDelete 钩子）
 	db.Delete(&newComment)
 
-	// 重新加载文章，看看状态有没有变成 "无评论"
-	db.First(&lisiPost,2)
-	fmt.Printf("删除评论后，文章状态: %s\n", lisiPost.CommentStatus)
+	// 5. 重新加载文章，看看状态有没有被减回 "无评论"
+	db.First(&postForComment, testPost.ID)
+	fmt.Printf("删除评论后，文章状态: %s\n", postForComment.CommentStatus)
 
 }
