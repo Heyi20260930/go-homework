@@ -1,0 +1,12 @@
+# 忽略数据库文件
+*.db
+*.db-shm
+*.db-wal
+
+# 忽略编译出的可执行文件
+*.exe
+main
+
+# 忽略 IDE 配置
+.vscode/
+.idea/
